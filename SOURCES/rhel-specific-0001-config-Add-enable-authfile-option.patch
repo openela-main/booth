@@ -1,0 +1,106 @@
+From 87c8545816cca03d19c2f3ef54031940f7e19d50 Mon Sep 17 00:00:00 2001
+From: Jan Friesse <jfriesse@redhat.com>
+Date: Fri, 18 Nov 2022 11:57:46 +0100
+Subject: [PATCH] config: Add enable-authfile option
+
+This option enables (or disables) usage of authfile. Can be 'yes' or 'no'.
+Default is 'no'.
+
+Booth usage of authfile was broken for long time (since commit
+da79b8ba28ad4837a0fee13e5f8fb6f89fe0e24c).
+
+Pcs was adding authfile by default, but it was not used. Once booth bug
+was fixed problem appears because mixed clusters (with fixed version and
+without fixed one) stops working.
+
+This non-upstream option is added and used to allow use of
+authfile without breaking compatibility for clusters
+consisting of mixed versions (usually happens before all nodes are
+updated) of booth (user have to explicitly
+enable usage of authfile).
+
+This patch is transitional and will be removed in future major version of
+distribution.
+
+Signed-off-by: Jan Friesse <jfriesse@redhat.com>
+---
+ docs/boothd.8.txt |  7 +++++++
+ src/config.c      | 17 +++++++++++++++++
+ src/config.h      |  1 +
+ src/main.c        |  2 +-
+ 4 files changed, 26 insertions(+), 1 deletion(-)
+
+diff --git a/docs/boothd.8.txt b/docs/boothd.8.txt
+index 0f3d2c1..c7a8413 100644
+--- a/docs/boothd.8.txt
++++ b/docs/boothd.8.txt
+@@ -230,6 +230,13 @@ will always bind and listen to both UDP and TCP ports.
+ 	parameter to a higher value. The time skew test is performed
+ 	only in concert with authentication.
+ 
++'enable-authfile'::
++	Enables (or disables) usage of authfile. Can be 'yes' or 'no'.
++	Default is 'no'.
++	This is non-upstream option used to allow use of authfile without
++	breaking compatibility for clusters consisting of mixed
++	versions of booth.
++
+ 'debug'::
+ 	Specifies the debug output level. Alternative to
+ 	command line argument. Effective only for 'daemon'
+diff --git a/src/config.c b/src/config.c
+index f0ca4aa..e1f25f0 100644
+--- a/src/config.c
++++ b/src/config.c
+@@ -732,6 +732,23 @@ no_value:
+ 			booth_conf->maxtimeskew = atoi(val);
+ 			continue;
+ 		}
++
++		if (strcmp(key, "enable-authfile") == 0) {
++			if (strcasecmp(val, "yes") == 0 ||
++			    strcasecmp(val, "on") == 0 ||
++			    strcasecmp(val, "1") == 0) {
++				booth_conf->enable_authfile = 1;
++			} else if (strcasecmp(val, "no") == 0 ||
++			    strcasecmp(val, "off") == 0 ||
++			    strcasecmp(val, "0") == 0) {
++				booth_conf->enable_authfile = 0;
++			} else {
++				error = "Expected yes/no value for enable-authfile";
++				goto err;
++			}
++
++			continue;
++		}
+ #endif
+ 
+ 		if (strcmp(key, "site") == 0) {
+diff --git a/src/config.h b/src/config.h
+index bca73bc..da1e917 100644
+--- a/src/config.h
++++ b/src/config.h
+@@ -297,6 +297,7 @@ struct booth_config {
+ 	struct stat authstat;
+ 	char authkey[BOOTH_MAX_KEY_LEN];
+ 	int authkey_len;
++	int enable_authfile;
+     /** Maximum time skew between peers allowed */
+ 	int maxtimeskew;
+ 
+diff --git a/src/main.c b/src/main.c
+index b4a174f..0fdb295 100644
+--- a/src/main.c
++++ b/src/main.c
+@@ -364,7 +364,7 @@ static int setup_config(int type)
+ 	if (rv < 0)
+ 		goto out;
+ 
+-	if (booth_conf->authfile[0] != '\0') {
++	if (booth_conf->authfile[0] != '\0' && booth_conf->enable_authfile) {
+ 		rv = read_authkey();
+ 		if (rv < 0)
+ 			goto out;
+-- 
+2.27.0
+
